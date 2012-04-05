@@ -47,8 +47,32 @@ Now the frame is assembled, but the "spec" for the frame needs to be built from 
 
 Finally, allocate the frame. First make `NUM_FRAMES` (`frame.h`) pointers to the frame and frame checks frame. For each of those, allocate the `frame_len` and `frame_check_len` (the actual data). `NUM_FRAMES` is the number of frames to keep in memory as a buffer. This means that a piece of data and idle for up to 5 seconds and still be written to disk before that frame is pushed out of memory.
 
+derived fields
+--------------
+
+Supporting functions: The function `get_derived_field` takes a field index and depending on its type returns the field for each derived data type. `num_derived_field` has a static counter which sums up the number of derived fields. `get_derived_index`?
+
+timing
+------
+
+`clock_frame_check` has a static tracker of the previous time and frame page. If the page has not advanced after `CLOCK_FRAME_TIMEOUT`, then give a warning and reset the timer. (Otherwise reset the frame page and time tracker to the present value for next time the function is called.)
+
+`clock_frame_start` locks the thread. If the position in the frame exceeds the `PULSE_RATE`, restart the frame position. If the frame page exceeds `NUM_FRAMES`, reset the frame page. Return the position and the page.
+
+`clock_frame_end` finishes the cycle by writing out the control command values using `write_ctrl_cmd_vals` and the kuka values using `write_kuka_vals`. It then unlocks the locking. If the frame position has reached `DISC_PUSH_INDEX=40` (TODO, val?), then call `push_frame_to_disc` to write out. Note that `NUM_FIRST_SKIPS` frames are discarded to allow for initial synchronization.
+
+output
+------
+`push_frame_to_disc` writes the frame.
+
+`new_frame_file` generates a pointer to a rolling file output of frame files. In the first call, it makes the directory for `DATA_DIR/RAW_DIR/time` and writes the spec file (interal spec, and then derived fields) and the log file (pointed to by `message_add_logfile`. On all calls it opens the field for a chunk of frames and sets a "cur" file pointing to the current frame data written to disk.
+
+`check_frame_field` goes through and fills in the last good (received) value for each piece of data missing from the frame. It does this by calling `frame_check` for the entry. The total number of bad entries is returned.
+
 Notes:
 
+* TODO: fill in workings of derived fields in frame.c
+* TODO: where is `clock_frame_check` used?
 * TODO: write out more details of the internal spec construction for KUKA and control bitfields.
 * TODO: Why does this needs to be called after `kuka_init`.
 * TODO: where is `frame_spec_t` defined? `act_util`? write this definition out.
