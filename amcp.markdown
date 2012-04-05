@@ -1,31 +1,14 @@
 Overview:
 =========
 
-Central rates
--------------
-* `PULSE_RATE` fastest rate in the frame, 100 Hz for the bbc and 400 Hz for encoders (frame.h)
-* `CTRL_CMD_DEF_PERIOD` is the period (in sec) at which external commands are logged (io.h)
-* `CTRL_CMD_DEF_PERFRAME` is the derived rate (in Hz) at which external commands are logged (io.h)
-
-TODO: the `CTRL_CMD_DEF_PERIOD` and `CTRL_CMD_DEF_PERFRAME` definitions are funny.
-
-`amcp.c`
-======
-`int main(int argc, char *argv[])`
-`void exit_handler()` -- ref in main using `set_exit_subroutine`
-`void ctrlc_handler(int signum)` -- ref in main signal handler
-
-`bbc.c`
-=====
-`void bbc_init()`
-`void *bbc_thread(void *arg)`
-`void write_bbc_to_frame(unsigned int outval, int index, int pos, int page)`; used in thread
-`void write_to_nios(int bbcfd, unsigned int addr, unsigned int datum)`; used in init and thread
-
 `frame.c`
 =========
-The central functions here are `build_frame()` ...
-The `map` specifies the location of each piece of data in the `frame`. The map is built out of the specification for each device in `io_struct.c`.
+This provides utilities for assembling a data frame (`build_frame()`), pushing data to it (`map`), and saving the frames `push_frame_to_disc()`.
+
+Maps
+----
+
+The map specifies the location of each piece of data in the `frame`. The map is built out of the specification for each device in `io_struct.c`.
 
 Access to the data in the frame is provided by `map_XXX_to_frame`. For each system, this calls `map_to_frame` for the map for that system `XXX_map` and a position within a frame and page. Internally, this does `frame[page][map->start + map->size * realpos]`, where realpos is the position to the block in the frame where the data are.
 
@@ -55,6 +38,10 @@ Supporting functions: The function `get_derived_field` takes a field index and d
 timing
 ------
 
+* `PULSE_RATE` fastest rate in the frame, 100 Hz for the bbc and 400 Hz for encoders (frame.h)
+* `CTRL_CMD_DEF_PERIOD` is the period (in sec) at which external commands are logged (io.h)
+* `CTRL_CMD_DEF_PERFRAME` is the derived rate (in Hz) at which external commands are logged (io.h)
+
 `clock_frame_check` has a static tracker of the previous time and frame page. If the page has not advanced after `CLOCK_FRAME_TIMEOUT`, then give a warning and reset the timer. (Otherwise reset the frame page and time tracker to the present value for next time the function is called.)
 
 `clock_frame_start` locks the thread. If the position in the frame exceeds the `PULSE_RATE`, restart the frame position. If the frame page exceeds `NUM_FRAMES`, reset the frame page. Return the position and the page.
@@ -63,26 +50,16 @@ timing
 
 output
 ------
-`push_frame_to_disc` writes the frame.
+`push_frame_to_disc` writes the frame. The first four bytes are the `START_OF_FRAME` signature and counter. Call `check_frame_field` on all of the bbc and abob channels to count up the number of entries missing. Set the flag for the submit interpreter heartbeat (TODO more). Write 5 frames to a given chunk output file. If the number of frames in the file exceeds `MAX_FRAMES_IN_FILE=(15 * 60)` (15 minutes) then close the flat file and start a new output file.
 
 `new_frame_file` generates a pointer to a rolling file output of frame files. In the first call, it makes the directory for `DATA_DIR/RAW_DIR/time` and writes the spec file (interal spec, and then derived fields) and the log file (pointed to by `message_add_logfile`. On all calls it opens the field for a chunk of frames and sets a "cur" file pointing to the current frame data written to disk.
 
 `check_frame_field` goes through and fills in the last good (received) value for each piece of data missing from the frame. It does this by calling `frame_check` for the entry. The total number of bad entries is returned.
 
-Notes:
+Relevant structures
+-------------------
 
-* TODO: fill in workings of derived fields in frame.c
-* TODO: where is `clock_frame_check` used?
-* TODO: write out more details of the internal spec construction for KUKA and control bitfields.
-* TODO: Why does this needs to be called after `kuka_init`.
-* TODO: where is `frame_spec_t` defined? `act_util`? write this definition out.
-* TODO: should `last_frame_check_len = frame_len;` be `last_frame_check_len = frame_check_len;` in lin 228 of `frame.c`: YES, fixed.
-
-`frame.h`
-=========
-
-`struct map_frame_t`
----------------------
+In frame.h, `struct map_frame_t`
 * `start`:
 * `check_start`:
 * `perframe`: data rate in Hz (frame is 1sec)
@@ -90,13 +67,33 @@ Notes:
 * `size`: side of the data entries here
 * `field_name`: descriptive name of the field
 
-`io.h`:
-=======
-
-`struct datum_t`
-----------------
-This is a unit of data for all IO structures.
+In io.h, `struct datum_t` (this is a unit of data for all IO structures.)
 * `field`: descriptive name of the field
 * `perframe`: data rate in Hz (number per frame)
 * `rw`: char for `r` read, or `w` write
+
+Notes
+------
+
+* TODO: the `CTRL_CMD_DEF_PERIOD` and `CTRL_CMD_DEF_PERFRAME` definitions are funny.
+* TODO: fill in workings of derived fields in frame.c
+* TODO: where is `clock_frame_check` used?
+* TODO: write out more details of the internal spec construction for KUKA and control bitfields.
+* TODO: Why does this needs to be called after `kuka_init`.
+* TODO: where is `frame_spec_t` defined? `act_util`? write this definition out.
+* TODO: should `last_frame_check_len = frame_len;` be `last_frame_check_len = frame_check_len;` in lin 228 of `frame.c`: YES, fixed.
+
+
+`amcp.c`
+======
+`int main(int argc, char *argv[])`
+`void exit_handler()` -- ref in main using `set_exit_subroutine`
+`void ctrlc_handler(int signum)` -- ref in main signal handler
+
+`bbc.c`
+=====
+`void bbc_init()`
+`void *bbc_thread(void *arg)`
+`void write_bbc_to_frame(unsigned int outval, int index, int pos, int page)`; used in thread
+`void write_to_nios(int bbcfd, unsigned int addr, unsigned int datum)`; used in init and thread
 
