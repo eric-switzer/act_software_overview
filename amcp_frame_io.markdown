@@ -1,13 +1,6 @@
-`frames`
-=========
-This provides utilities for assembling a data frame (`build_frame()`), pushing data to it (`map`), and saving the frames `push_frame_to_disc()`.
-
-Connecting data to positions in the data frame
------------------------------------------------
-
-The map specifies the location of each piece of data in the `frame`. The map is built out of the specification for each device in `io_struct.c`.
-
-Access to the data in the frame is provided by `map_XXX_to_frame`. For each system, this calls `map_to_frame` for the map for that system `XXX_map` and a position within a frame and page. Internally, this does `frame[page][map->start + map->size * realpos]`, where realpos is the position to the block in the frame where the data are.
+`frame.c/.h`
+============
+This provides utilities for assembling a data frame (`build_frame()`), pushing data to it (`map`), and saving the frames (`push_frame_to_disc()`).
 
 `build_frame()`
 ---------------
@@ -27,6 +20,50 @@ Now the frame is assembled, but the "spec" for the frame needs to be built from 
 
 Finally, allocate the frame. First make `NUM_FRAMES` (`frame.h`) pointers to the frame and frame checks frame. For each of those, allocate the `frame_len` and `frame_check_len` (the actual data). `NUM_FRAMES` is the number of frames to keep in memory as a buffer. This means that a piece of data and idle for up to 5 seconds and still be written to disk before that frame is pushed out of memory.
 
+`push_frame_to_disc()`
+----------------------
+The first four bytes are the `START_OF_FRAME` signature and counter. Call `check_frame_field` on all of the bbc and abob channels to count up the number of entries missing. Set the flag for the submit interpreter heartbeat (TODO more). Write 5 frames to a given chunk output file. If the number of frames in the file exceeds `MAX_FRAMES_IN_FILE=(15 * 60)` (15 minutes) then close the flat file and start a new output file.
+
+`new_frame_file` generates a pointer to a rolling file output of frame files. In the first call, it makes the directory for `DATA_DIR/RAW_DIR/time` and writes the spec file (interal spec, and then derived fields) and the log file (pointed to by `message_add_logfile`. On all calls it opens the field for a chunk of frames and sets a "cur" file pointing to the current frame data written to disk.
+
+`check_frame_field` goes through and fills in the last good (received) value for each piece of data missing from the frame. It does this by calling `frame_check` for the entry. The total number of bad entries is returned.
+
+Relevant structures
+-------------------
+
+In frame.h, `struct map_frame_t`
+
+* `start`:
+* `check_start`:
+* `perframe`: data rate in Hz (frame is 1sec)
+* `period`: the `PULSE_RATE` divided by the number per frame
+* `size`: side of the data entries here
+* `field_name`: descriptive name of the field
+
+In io.h, `struct datum_t` (this is a unit of data for all IO structures.)
+
+* `field`: descriptive name of the field
+* `perframe`: data rate in Hz (number per frame)
+* `rw`: char for `r` read, or `w` write
+
+`io.c`
+=====
+
+`sanity_checks()` performs several tests to see that the `io_struct.c` and `frame_struct.c` specify valid data fields. This is called after `build_frame()` in amcp's main, but before the readout threads begin. Using helper functions below, this 1) checks field name lengths, 2) looks for duplicates, 3) checks that there are a sane number of bbc channels or card addresses, that each controllable bbc/abob channel on the bbc has a corresponding external control entry, and that all controllable quantities are saved in the output frame, 4) that all derived fields have some source. Helers:
+* `check_duplicates` is a service function that check for duplicates in the field names specified in `io_struct.c`.
+* `check_for_source` checks that derived fields are based on real underlying fields, either derived or raw
+* `check_length` makes sure a field name is not too long
+
+Data model
+===========
+
+the map
+--------
+
+The map specifies the location of each piece of data in the `frame`. The map is built out of the specification for each device in `io_struct.c`.
+
+Access to the data in the frame is provided by `map_XXX_to_frame`. For each system, this calls `map_to_frame` for the map for that system `XXX_map` and a position within a frame and page. Internally, this does `frame[page][map->start + map->size * realpos]`, where realpos is the position to the block in the frame where the data are.
+
 derived fields
 --------------
 
@@ -45,32 +82,8 @@ timing
 
 `clock_frame_end` finishes the cycle by writing out the control command values using `write_ctrl_cmd_vals` and the kuka values using `write_kuka_vals`. It then unlocks the locking. If the frame position has reached `DISC_PUSH_INDEX=40` (TODO, val?), then call `push_frame_to_disc` to write out. Note that `NUM_FIRST_SKIPS` frames are discarded to allow for initial synchronization.
 
-output
-------
-`push_frame_to_disc` writes the frame. The first four bytes are the `START_OF_FRAME` signature and counter. Call `check_frame_field` on all of the bbc and abob channels to count up the number of entries missing. Set the flag for the submit interpreter heartbeat (TODO more). Write 5 frames to a given chunk output file. If the number of frames in the file exceeds `MAX_FRAMES_IN_FILE=(15 * 60)` (15 minutes) then close the flat file and start a new output file.
-
-`new_frame_file` generates a pointer to a rolling file output of frame files. In the first call, it makes the directory for `DATA_DIR/RAW_DIR/time` and writes the spec file (interal spec, and then derived fields) and the log file (pointed to by `message_add_logfile`. On all calls it opens the field for a chunk of frames and sets a "cur" file pointing to the current frame data written to disk.
-
-`check_frame_field` goes through and fills in the last good (received) value for each piece of data missing from the frame. It does this by calling `frame_check` for the entry. The total number of bad entries is returned.
-
-Relevant structures
--------------------
-
-In frame.h, `struct map_frame_t`
-* `start`:
-* `check_start`:
-* `perframe`: data rate in Hz (frame is 1sec)
-* `period`: the `PULSE_RATE` divided by the number per frame
-* `size`: side of the data entries here
-* `field_name`: descriptive name of the field
-
-In io.h, `struct datum_t` (this is a unit of data for all IO structures.)
-* `field`: descriptive name of the field
-* `perframe`: data rate in Hz (number per frame)
-* `rw`: char for `r` read, or `w` write
-
 Notes
-------
+=====
 
 * TODO: larger structure, how is the clock defined (both bbc and enc call clock start/end), how is the rate set?
 * TODO: the `CTRL_CMD_DEF_PERIOD` and `CTRL_CMD_DEF_PERFRAME` definitions are funny.
@@ -80,14 +93,6 @@ Notes
 * TODO: Why does this needs to be called after `kuka_init`.
 * TODO: where is `frame_spec_t` defined? `act_util`? write this definition out.
 * TODO: should `last_frame_check_len = frame_len;` be `last_frame_check_len = frame_check_len;` in lin 228 of `frame.c`: YES, fixed.
-
-`io.c`
-=====
-
-`sanity_checks()` performs several tests to see that the `io_struct.c` and `frame_struct.c` specify valid data fields. This is called after `build_frame()` in amcp's main, but before the readout threads begin. Using helper functions below, this 1) checks field name lengths, 2) looks for duplicates, 3) checks that there are a sane number of bbc channels or card addresses, that each controllable bbc/abob channel on the bbc has a corresponding external control entry, and that all controllable quantities are saved in the output frame, 4) that all derived fields have some source. Helers:
-* `check_duplicates` is a service function that check for duplicates in the field names specified in `io_struct.c`.
-* `check_for_source` checks that derived fields are based on real underlying fields, either derived or raw
-* `check_length` makes sure a field name is not too long
 
 `amcp.c`
 ======
