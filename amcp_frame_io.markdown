@@ -1,12 +1,9 @@
-Overview:
-=========
-
-`frame.c`
+`frames`
 =========
 This provides utilities for assembling a data frame (`build_frame()`), pushing data to it (`map`), and saving the frames `push_frame_to_disc()`.
 
-Maps
-----
+Connecting data to positions in the data frame
+-----------------------------------------------
 
 The map specifies the location of each piece of data in the `frame`. The map is built out of the specification for each device in `io_struct.c`.
 
@@ -75,6 +72,7 @@ In io.h, `struct datum_t` (this is a unit of data for all IO structures.)
 Notes
 ------
 
+* TODO: larger structure, how is the clock defined (both bbc and enc call clock start/end), how is the rate set?
 * TODO: the `CTRL_CMD_DEF_PERIOD` and `CTRL_CMD_DEF_PERFRAME` definitions are funny.
 * TODO: fill in workings of derived fields in frame.c
 * TODO: where is `clock_frame_check` used?
@@ -83,6 +81,13 @@ Notes
 * TODO: where is `frame_spec_t` defined? `act_util`? write this definition out.
 * TODO: should `last_frame_check_len = frame_len;` be `last_frame_check_len = frame_check_len;` in lin 228 of `frame.c`: YES, fixed.
 
+`io.c`
+=====
+
+`sanity_checks()` performs several tests to see that the `io_struct.c` and `frame_struct.c` specify valid data fields. This is called after `build_frame()` in amcp's main, but before the readout threads begin. Using helper functions below, this 1) checks field name lengths, 2) looks for duplicates, 3) checks that there are a sane number of bbc channels or card addresses, that each controllable bbc/abob channel on the bbc has a corresponding external control entry, and that all controllable quantities are saved in the output frame, 4) that all derived fields have some source. Helers:
+* `check_duplicates` is a service function that check for duplicates in the field names specified in `io_struct.c`.
+* `check_for_source` checks that derived fields are based on real underlying fields, either derived or raw
+* `check_length` makes sure a field name is not too long
 
 `amcp.c`
 ======
