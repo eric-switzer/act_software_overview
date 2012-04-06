@@ -50,9 +50,21 @@ In io.h, `struct datum_t` (this is a unit of data for all IO structures.)
 =====
 
 `sanity_checks()` performs several tests to see that the `io_struct.c` and `frame_struct.c` specify valid data fields. This is called after `build_frame()` in amcp's main, but before the readout threads begin. Using helper functions below, this 1) checks field name lengths, 2) looks for duplicates, 3) checks that there are a sane number of bbc channels or card addresses, that each controllable bbc/abob channel on the bbc has a corresponding external control entry, and that all controllable quantities are saved in the output frame, 4) that all derived fields have some source. Helers:
+
 * `check_duplicates` is a service function that check for duplicates in the field names specified in `io_struct.c`.
 * `check_for_source` checks that derived fields are based on real underlying fields, either derived or raw
 * `check_length` makes sure a field name is not too long
+
+There are several service functions which translate between channels:
+
+* `bbc_to_write_map()` and `write_map_to_bbc` connect each writable bbcio entry to its `bbcio_write_map` entry (which connects it to the controller). There is an analogous `write_map_to_sensoray`. `get_bbcio_index()` finds the BBC index associated with a channel on a given card.
+* `get_bbcio_write_index()` compiles indices for a map from all channel indices to write indices. If the channel is not writable, then return -1.
+* `get_bbcio_index_from_field()` is a fast way to go through and find the channel number associated with a field name.
+* `get_bbcio_write_treatment()` identifies bbc channels that have a special treatment.
+* `get_calib_info_from_bbc()` connects the bbc channel index with the calibrated temperature channels that are used for cycling/servo
+* `bbc_to_cycle_ctrl_index()` `bbc_to_servo_index()`: if a BBC channel is used for cycling/servo, read it and apply the lookup to get temperature
+* `get_ctrl_cmd_perframe_index()`: given a name, find the index in the control command (perframe?)
+* `get_type_size()` gives the size in bytes for the various characters that label data types.
 
 Data model
 ===========
