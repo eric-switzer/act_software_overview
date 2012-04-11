@@ -49,6 +49,8 @@ In io.h, `struct datum_t` (this is a unit of data for all IO structures.)
 `io.c`
 =====
 
+`io.c` is mainly a set of support functions which provide links between various channel indices and sanity checks for the IO channel specifications. `io.h` specifies more generic properties of the readout systems like the number of cards, channels, IP addresses, etc.
+
 `sanity_checks()` performs several tests to see that the `io_struct.c` and `frame_struct.c` specify valid data fields. This is called after `build_frame()` in amcp's main, but before the readout threads begin. Using helper functions below, this 1) checks field name lengths, 2) looks for duplicates, 3) checks that there are a sane number of bbc channels or card addresses, that each controllable bbc/abob channel on the bbc has a corresponding external control entry, and that all controllable quantities are saved in the output frame, 4) that all derived fields have some source. Helers:
 
 * `check_duplicates` is a service function that check for duplicates in the field names specified in `io_struct.c`.
