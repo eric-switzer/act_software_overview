@@ -5,6 +5,10 @@
 ----------------
 First initialize the parameters to their default values, split into a BBC handler `cmd_val_to_bbcio_val()` and a pointing handler `change_point_info()`. Issue a refresh and wait for the commands from the server which refresh all values to their current values on the server using `parsecommand()`. The value and command index are parsed by system, either BBC, pointing or KUKA bitmaps. Set up circular buffers for handing commands to each of the sub-systems (as threads): BBC, sensoray, KUKA, pointing.
 
+`control_thread()`
+------------------
+The control loop runs at 400 Hz. Run the loop so long as the frame position is updating. When the frame fills and the position resets (1 second), see if `amcp` has made any changes internally (e.g. in the case of cryogenic cycling) and relay these back to the server. Before parsing for new input, make a copy of the current parameters to update and push back. While messages are available, parse and push these to the new control variable array and register that the variable has changed in `cmd_change`. Also print the command received, ack. it with the server and print the ack. The servo thread hangs off of the commanding thread function (rather than being an independent thread), and is called with `do_servo()`. The calibration bolometer was also directly controlled from this loop. Next see if the command was related to pointing, bbc, abob, kuka, the sync box, or internal variable (the window) and push to their circular buffers if so.
+
 supporting functions:
 ---------------------
 * `num_ctrl_cmd_param()` returns the number of controlled parameters
