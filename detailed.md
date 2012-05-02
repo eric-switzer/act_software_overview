@@ -1,2 +1,8 @@
+Commanding
+==========
+The master database is `http://cita.utoronto.ca/~eswitzer/master.json`. This will move to a site computer. The redis server is running on bors and the command is `PUBLISH housekeeping "variable_name value"`. The amcp response is `PUBLISH housekeeping_ack variable_name`, and you can then call a `GET variable_name` to see its current value, which is also tracked on redis. Commands can be directly issued to redis using `redis-cli` on bors. The redis port will stay behind the gateway, and we should use some combination of a tunnel/VPN to access site controls.
+
+BBC:
+====
 * The BLAST bus uses half-duplex MAX3088 drivers for RS-485 control (clock, strobe and data). These are independently powered and opto-isolated on the sending and receiving end. For the card to receive serial sync signals from the UBC sync box, this stage must be powered. On the PCI card side, one has the option of powering the IO stage using PCI power taken off the daughter card. For safety, rather than drawing from the bus, we power the IO stage using a connector to the computer supply. A separate RS-232 serial link sends commands to the sync box from the same computer.
 * If the sync box's power cycles, `act_timing` needs to be restarted as `sudo /etc/init.d/act_timing restart`.
