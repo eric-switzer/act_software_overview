@@ -44,11 +44,23 @@ Summary of other drivers updates:
 * The encoder driver `ik220`, BLAST bus card (BBC) driver `bbcpci` and polling code `act_timing` are updated to recent linux kernels (32 bit).
 * The `interface_server` has been replaced with redis. The master shelve file which previously specified commands has been replaced with a JSON file available on the web or from the redis server. The housekeeping system parses this file into its control_struct.c/h.
 * The old Tkinter/Pmw GUI is replaced by wxpython which builds its interface from the JSON specification.
-* The BBC/Toronto infrastructure has been removed from amcp except for reading the serial number from the syncronization box.
+* The BBC/Toronto infrastructure has been removed from `amcp` except for reading the serial number from the syncronization box.
 * All of the relevant code from the feynman CVS server is revamped and now on an SVN at UPenn.
 * amcp running, old ACT code removed, redis scheduler talks to redis, telescope motion tests through amcp
 * bede streaming to adefile down the mountain (note: slow)
 * hardware: replacement for bors up and running (borsn), Ubuntu 10.04 32-bit, move cards to borsn and plug in cables as before, update HD and OS in old bors, upgrade the link to Canopy
+* National instruments housekeeping readout to 3 USBs->Fiber->USB port in housekeeping computer in the equipment room.
+
+`amcp` installation (on older OSs):
+====================================
+* Redis `wget http://redis.googlecode.com/files/redis-2.4.11.tar.gz` (see `http://redis.io/download`) untar it, then `make; sudo make install; cd utils; sudo ./install_server.sh`
+* libevent `wget https://github.com/downloads/libevent/libevent/libevent-2.0.18-stable.tar.gz` (see `http://libevent.org/`) untar it, then `./configure; make; sudo make install`
+* hiredis `wget https://github.com/antirez/hiredis/tarball/master` (see `https://github.com/antirez/hiredis/downloads`) untar it, then `make; sudo make install`
+* run `sudo /sbin/ldconfig`
+* if you do not have the housekeeping trunk `svn co http://actpolsvn.info/svn/actpol_software/housekeeping/trunk`
+* in `/etc/redis.conf` (or similar) set `timeout 0` so that subscribed amcp/client sessions will not time out (this is not handled well yet)
+
+amcp writes its logs to /data/housekeeping/etc/amcp.log; use `tail -f` or multitail.
 
 Optical test setup:
 ===================
@@ -80,29 +92,8 @@ The auto-startup sequency is `dn_start_seq`. Set this high using:
 `publish housekeeping "dn_start_seq 1"`
 publish sends a message to any subscribers of the "housekeeping" channel (this is just amcp now) and the message is "dn_start_seq 1" where 1 is the requested value. amcp should reply by publishing to "housekeeping_ack" with the variable name it received. It also sets that value in the key/value store, and you can check its value by using `get dn_start_seq`. Actions still need a variable value, so e.g. publish housekeeping "point_go_home 1", needs the "1" to set that request high.@
 
-
-Updates and software organization
-=================================
-* The encoder driver `ik220`, BLAST bus card (BBC) driver `bbcpci` and polling code `act_timing` are updated to recent linux kernels (32 bit).
-* The BBC/Toronto infrastructure has been removed from `amcp` except for reading the serial number from the syncronization box.
-* National instruments housekeeping readout to 3 USBs->Fiber->USB port in housekeeping computer in the equipment room.
-* All of the relevant code from the feynman CVS server is revamped and now on an SVN at UPenn.
-* Remaining: Integrating the thermometry in the frame. Moving from 32 to 64 bit OS and impact on drivers? Newest LTS Ubuntu.
-
 Using the BBC pci card as a fast serial reader:
 ===============================================
 The BLAST bus uses half-duplex MAX3088 drivers for RS-485 control (clock, strobe and data). These are independently powered and opto-isolated on the sending and receiving end. For the card to receive serial sync signals from the UBC sync box, this stage must be powered. On the PCI card side, one has the option of powering the IO stage using PCI power taken off the daughter card. For safety, rather than drawing from the bus, we power the +5V IO stage using a SATA connector to the computer supply. A separate RS-232 serial link with null modem sends commands to the sync box from the same computer.
 
 If the sync box power cycles, `act_timing` needs to be restarted as `sudo /etc/init.d/act_timing restart`.
-
-`amcp` installation (on older OSs):
-====================================
-* Redis `wget http://redis.googlecode.com/files/redis-2.4.11.tar.gz` (see `http://redis.io/download`) untar it, then `make; sudo make install; cd utils; sudo ./install_server.sh`
-* libevent `wget https://github.com/downloads/libevent/libevent/libevent-2.0.18-stable.tar.gz` (see `http://libevent.org/`) untar it, then `./configure; make; sudo make install`
-* hiredis `wget https://github.com/antirez/hiredis/tarball/master` (see `https://github.com/antirez/hiredis/downloads`) untar it, then `make; sudo make install`
-* run `sudo /sbin/ldconfig`
-* if you do not have the housekeeping trunk `svn co http://actpolsvn.info/svn/actpol_software/housekeeping/trunk`
-* in `/etc/redis.conf` (or similar) set `timeout 0` so that subscribed amcp/client sessions will not time out (this is not handled well yet)
-
-amcp writes its logs to /data/housekeeping/etc/amcp.log; use `tail -f` or multitail.
-
