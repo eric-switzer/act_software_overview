@@ -39,6 +39,17 @@ place of printf.
 * In install, old chkconfig and udev code is from Fedora 4 and needs to be replaced with newer boot-time configuration mgmt for ubuntu.
 * rename: appio.a -> libappio.a so that -lappio works
 
+Summary of other drivers updates:
+--------------------
+* The encoder driver `ik220`, BLAST bus card (BBC) driver `bbcpci` and polling code `act_timing` are updated to recent linux kernels (32 bit).
+* The `interface_server` has been replaced with redis. The master shelve file which previously specified commands has been replaced with a JSON file available on the web or from the redis server. The housekeeping system parses this file into its control_struct.c/h.
+* The old Tkinter/Pmw GUI is replaced by wxpython which builds its interface from the JSON specification.
+* The BBC/Toronto infrastructure has been removed from amcp except for reading the serial number from the syncronization box.
+* All of the relevant code from the feynman CVS server is revamped and now on an SVN at UPenn.
+* amcp running, old ACT code removed, redis scheduler talks to redis, telescope motion tests through amcp
+* bede streaming to adefile down the mountain (note: slow)
+* hardware: replacement for bors up and running (borsn), Ubuntu 10.04 32-bit, move cards to borsn and plug in cables as before, update HD and OS in old bors, upgrade the link to Canopy
+
 Optical test setup:
 ===================
 Software: The stage controller and shutter readout are in `borsnn:~act/code/optical_measurements/`.
