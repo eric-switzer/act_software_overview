@@ -4,6 +4,16 @@ Specifies how names map to hardware channels on specific devices. The structures
 
 Data read from devices are stored to a binary frame file. The structure that maps an entry in the frame must specify a `datum_t` structure that describes the field name, data rate, whether it is read/write, and a single-char type string. In an example device, `bbcio_t`, this frame data spec is linked to a card and channel in the readout: 
 ```c
+struct datum_t {
+  char field[FIELD_LEN];        // name
+  int perframe;                 // number of samples per frame
+  char rw;                      // 'r' or 'w'
+  //! 'c' = char, 's' = short, 'u' = unsigned short, 'S' = long,
+  //! 'S' = unsigned long, 'f' = float, 'd' = double
+  char type;@
+};
+#define DATUM_END_OF_IO     {"", 'x', 'x'}
+
 struct bbcio_t {
   struct datum_t datum;
   char card;
@@ -42,21 +52,17 @@ A readout device can have many channels. Each channel is associated with a posit
 
 To build the frame, go through and map each field in the readouts to a position of the frame. Some entries in the `io_struct` specification are for writing to devices, and are not written to a frame. In this case, they stay in the map, but have `start=-1` to indicate they should be ignored. As the loop goes through live channel to write to the frame, the position is incremented through `frame_len` and `frame_check_len`. The frame starts with a 4-byte header, so is initialized as `frame_len=4` but steps up as the data size times the number of dataum in that channel per frame. The `frame_check_len` starts from zero and counts the total number of data records (of any size) in the frame. `map_field()` takes a pointer to a `frame_map_t` and assigns the data `start` to `frame_length` and the `check_start` start to `frame_check_len`. `PULSE_RATE` is the rate in Hz of the fastest data in the frame. A given channel rate can be specified as a multiple factor (`period`) slower than the fastest rate. For example, if encoders are read at 400 Hz and the period is 4, a given channel will have a perframe of 100, or 100 Hz. In this case, the `io_struct` specifies the perframe and derives the period. The number `perframe` must be a multiple of the `PULSE_RATE`. Finally, `map_field()` copies the data field name to the frame map. Push `frame_len` ahead by the number of data per frame times their size, and push the `frame_check_len` ahead by just the number of datum per frame. Any inactive hardware (commented out of the frame struct) will not be registered as a map.
 
-The control parameters are treated specially.
+The control parameters (`ctrl_cmd_param[]`) are treated specially. On-off controlled variables are put into a 2-byte bitfield whose rate is the maximum rate (`top_ctrl_cmd_bit_rate`) of all the request on-off variables. These variables are not mapped with a `map_field()` call.
 
-TODO: rename check_start to start_index?
-TODO: remove the control parameters from the frame
+Now the frame is assembled, but the spec for the frame needs to be built from it. `num_internal_spec` is the number of channels in the frame. Create a new `internal_spec` array, where each entry for a channel is a `frame_spec_t`. Procedure:
 
-1. Count up the number of control variables that are relays (`num_ctrl_cmd_param()`) and will be put in bit fields.  Find the rate, taken to be the maximum rate requested for any servo (`top_ctrl_cmd_bit_rate`). The on-off bits are written in bitfields of two bytes each. Finally, make a list (`all_ctrl_cmd_period`) of all the rates as `PULSE_RATE` divided by the rate for that bit e.g. the number per data frame.
-4. Assemble the control parameter section of the frame. Rather than use `map_field`, build this directly in the function: 1) calculate the rate and period, 2) copy the name over, 3) copy over the location to point to fir this piece if data in the frame. For relays this is assumed to be 2 bytes. If it is not an on/off type (a relay) (TODO: what is that, then), assume it has size 4 and put -1 in its `ctrl_cmd_bit_map` entry, which is usually the bit number for a bitfield.
+1. copy the version, `ACT_SPEC_VERSION` and set comments to use `#`
+2. For each data source, call `make_raw_spec()`. This applies only to input data, and copies over the data type, perframe rate, units and field name. Units are null and the spec type is 'r'. The procedure is more complicatied for the KUKA bit fields, and constructs the bitfield description for each bit.
+3. Add control parameters to the output spec. If it is an on-off type count up the number of bitfields and register their spec.
 
-Now the frame is assembled, but the spec for the frame needs to be built from it. `num_internal_spec` is the number of channels in the frame and `frame_len` is the total size in bytes. Create a new`internal_spec` array, where each entry for a channel is a `frame_spec_t`. Procedure:
+Finally, allocate the frame. First make `NUM_FRAMES` (`frame.h`) pointers to the frame and frame checks frame. For each of those, allocate the `frame_len` and `frame_check_len` (the actual data). `NUM_FRAMES` is the number of frames to keep in memory as a buffer. This means that a piece of data and idle for up to 5 seconds and still be written to disk before that frame is pushed out of memory. The `frame_check[]` array is set to zero and once a channel is written to, set to one. This helps check that no devices are lagging in writing to the frame.
 
-1. copy the version, `ACT_SPEC_VERSION`
-2. For each data source, call `make_raw_spec`. This applies only to input data, and copies over the data type, rate, units and field name. The procedure is more complicatied for the KUKA bit fields, and constructs the bitfield description for each bit.
-3. Add control parameters to the output spec.
-
-Finally, allocate the frame. First make `NUM_FRAMES` (`frame.h`) pointers to the frame and frame checks frame. For each of those, allocate the `frame_len` and `frame_check_len` (the actual data). `NUM_FRAMES` is the number of frames to keep in memory as a buffer. This means that a piece of data and idle for up to 5 seconds and still be written to disk before that frame is pushed out of memory.
+A given channel in a system may have e.g. 10 records in a frame, and it can write into one of `NUM_FRAMES` possible pages. Each system as a function that uses `map_to_frame()` to return a pointer to the correct absolution position in a frame page. It also flags that it has requested (and presumably written to) a given entry in that frame. 
 
 `push_frame_to_disk()`
 ----------------------
@@ -66,23 +72,12 @@ The first four bytes are the `START_OF_FRAME` signature and counter. Call `check
 
 `check_frame_field` goes through and fills in the last good (received) value for each piece of data missing from the frame. It does this by calling `frame_check` for the entry. The total number of bad entries is returned.
 
-Relevant structures
--------------------
+Other functions in `frame.c`: clocking on functions that write data to the frame, manage derived fields.
 
-In frame.h, `struct map_frame_t`
-
-* `start`:
-* `check_start`:
-* `perframe`: data rate in Hz (frame is 1sec)
-* `period`: the `PULSE_RATE` divided by the number per frame
-* `size`: side of the data entries here
-* `field_name`: descriptive name of the field
-
-In io.h, `struct datum_t` (this is a unit of data for all IO structures.)
-
-* `field`: descriptive name of the field
-* `perframe`: data rate in Hz (number per frame)
-* `rw`: char for `r` read, or `w` write
+TODO: rename check_start to start_index?
+TODO: where is the ACT_SPEC_VERSION?, `frame_spec_t`?
+TODO: remove the control parameters from the frame, or at least the on-off bitframe
+TODO: where are the derived fields registered in the spec file?
 
 `io.c`
 =====
