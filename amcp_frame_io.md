@@ -1,6 +1,18 @@
+`io_struct.c/io.h`
+================
+Specifies how names map to hardware channels on specific devices. The structures defining this map are in `io.h`. Each one generally has a `datum_t` that describes the field name, data rate, whether it is read/write, and a single-char type string. A specific device has `datum_t` in its struct, e.g. `bbcio_t`, but then links it to a card and channel on the card. The `io.h` file also has specifications like the IP address of readout hardware, number of channels, etc. The `io_struct.c` file lays out each entry as 
+
+```c
+struct bbcio_t bbcio[] = {
+  {{"tr0100_ar3_lens_1k",    100, 'r', 'U'}, UT_CARD_DIODE, 0},
+...
+  END_OF_BBCIO
+};
+```
+
 `frame.c/.h`
 ============
-This provides utilities for assembling a data frame (`build_frame()`), pushing data to it (`map`), and saving the frames (`push_frame_to_disc()`).
+This provides utilities for assembling a data frame (`build_frame()`), pushing data to it (`map`), and saving the frames (`push_frame_to_disk()`).
 
 `build_frame()`
 ---------------
@@ -12,7 +24,7 @@ This assembles the output data frame. Procedure:
 3. Assemble the data frame. The first 4 bytes are a counter and start-of-frame word. (so `frame_len` = 4). For each data entry in the frame from a given data source, loop through the number of entries using `num_XXX()`, set the `start` to -1, and call `map_field()`. `map_field` takes a pointer to a `frame_map_t` and assigns the data `start` to `frame_length` and the write-check field `check_start` start to `frame_check_len`. The number `perframe` must be a multiple of the `PULSE_RATE`. Also check if the data size is consistent with the `frame_map_t` size. The `period` is set to the ratio of the `PULSE_RATE` to `perframe`. Copy the data field name to the frame. Push to `frame_len` ahead by the number of data per frame times their size, and push the `frame_check_len` ahead by just the number of datum per frame. Only data in the io structs which are read from active hardware are allocated.
 4. Assemble the control parameter section of the frame. Rather than use `map_field`, build this directly in the function: 1) calculate the rate and period, 2) copy the name over, 3) copy over the location to point to fir this piece if data in the frame. For relays this is assumed to be 2 bytes. If it is not an on/off type (a relay) (TODO: what is that, then), assume it has size 4 and put -1 in its `ctrl_cmd_bit_map` entry, which is usually the bit number for a bitfield.
 
-Now the frame is assembled, but the "spec" for the frame needs to be built from it. `num_internal_spec` is the number of channels in the frame and `frame_len` is the total size in bytes. Create a new`internal_spec` array, where each entry for a channel is a `frame_spec_t`. Procedure:
+Now the frame is assembled, but the spec for the frame needs to be built from it. `num_internal_spec` is the number of channels in the frame and `frame_len` is the total size in bytes. Create a new`internal_spec` array, where each entry for a channel is a `frame_spec_t`. Procedure:
 
 1. copy the version, `ACT_SPEC_VERSION`
 2. For each data source, call `make_raw_spec`. This applies only to input data, and copies over the data type, rate, units and field name. The procedure is more complicatied for the KUKA bit fields, and constructs the bitfield description for each bit.
@@ -20,11 +32,11 @@ Now the frame is assembled, but the "spec" for the frame needs to be built from 
 
 Finally, allocate the frame. First make `NUM_FRAMES` (`frame.h`) pointers to the frame and frame checks frame. For each of those, allocate the `frame_len` and `frame_check_len` (the actual data). `NUM_FRAMES` is the number of frames to keep in memory as a buffer. This means that a piece of data and idle for up to 5 seconds and still be written to disk before that frame is pushed out of memory.
 
-`push_frame_to_disc()`
+`push_frame_to_disk()`
 ----------------------
 The first four bytes are the `START_OF_FRAME` signature and counter. Call `check_frame_field` on all of the bbc and abob channels to count up the number of entries missing. Set the flag for the submit interpreter heartbeat (TODO more). Write 5 frames to a given chunk output file. If the number of frames in the file exceeds `MAX_FRAMES_IN_FILE=(15 * 60)` (15 minutes) then close the flat file and start a new output file.
 
-`new_frame_file` generates a pointer to a rolling file output of frame files. In the first call, it makes the directory for `DATA_DIR/RAW_DIR/time` and writes the spec file (interal spec, and then derived fields) and the log file (pointed to by `message_add_logfile`. On all calls it opens the field for a chunk of frames and sets a "cur" file pointing to the current frame data written to disk.
+`new_frame_file` generates a pointer to a rolling file output of frame files. In the first call, it makes the directory for `DATA_DIR/RAW_DIR/time` and writes the spec file (interal spec, and then derived fields) and the log file (pointed to by `message_add_logfile`. On all calls it opens the field for a chunk of frames and sets a cur file pointing to the current frame data written to disk.
 
 `check_frame_field` goes through and fills in the last good (received) value for each piece of data missing from the frame. It does this by calling `frame_check` for the entry. The total number of bad entries is returned.
 
@@ -51,7 +63,7 @@ In io.h, `struct datum_t` (this is a unit of data for all IO structures.)
 
 `io.c` is mainly a set of support functions which provide links between various channel indices and sanity checks for the IO channel specifications. `io.h` specifies more generic properties of the readout systems like the number of cards, channels, IP addresses, etc.
 
-`sanity_checks()` performs several tests to see that the `io_struct.c` and `frame_struct.c` specify valid data fields. This is called after `build_frame()` in amcp's main, but before the readout threads begin. Using helper functions below, this 1) checks field name lengths, 2) looks for duplicates, 3) checks that there are a sane number of bbc channels or card addresses, that each controllable bbc/abob channel on the bbc has a corresponding external control entry, and that all controllable quantities are saved in the output frame, 4) that all derived fields have some source. Helers:
+`sanity_checks()` performs several tests to see that the `io_struct.c` and `frame_struct.c` specify valid data fields. This is called after `build_frame()` in amcp main(), but before the readout threads begin. Using helper functions below, this 1) checks field name lengths, 2) looks for duplicates, 3) checks that there are a sane number of bbc channels or card addresses, that each controllable bbc/abob channel on the bbc has a corresponding external control entry, and that all controllable quantities are saved in the output frame, 4) that all derived fields have some source. Helers:
 
 * `check_duplicates` is a service function that check for duplicates in the field names specified in `io_struct.c`.
 * `check_for_source` checks that derived fields are based on real underlying fields, either derived or raw
@@ -94,7 +106,7 @@ timing
 
 `clock_frame_start` locks the thread. If the position in the frame exceeds the `PULSE_RATE`, restart the frame position. If the frame page exceeds `NUM_FRAMES`, reset the frame page. Return the position and the page.
 
-`clock_frame_end` finishes the cycle by writing out the control command values using `write_ctrl_cmd_vals` and the kuka values using `write_kuka_vals`. It then unlocks the locking. If the frame position has reached `DISC_PUSH_INDEX=40` (TODO, val?), then call `push_frame_to_disc` to write out. Note that `NUM_FIRST_SKIPS` frames are discarded to allow for initial synchronization.
+`clock_frame_end` finishes the cycle by writing out the control command values using `write_ctrl_cmd_vals` and the kuka values using `write_kuka_vals`. It then unlocks the locking. If the frame position has reached `DISK_PUSH_INDEX=40` (TODO, val?), then call `push_frame_to_disk` to write out. Note that `NUM_FIRST_SKIPS` frames are discarded to allow for initial synchronization.
 
 Notes
 =====
