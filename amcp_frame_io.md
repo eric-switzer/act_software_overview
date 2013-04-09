@@ -1,7 +1,17 @@
 `io_struct.c/io.h`
 ================
-Specifies how names map to hardware channels on specific devices. The structures defining this map are in `io.h`. Each one generally has a `datum_t` that describes the field name, data rate, whether it is read/write, and a single-char type string. A specific device has `datum_t` in its struct, e.g. `bbcio_t`, but then links it to a card and channel on the card. The `io.h` file also has specifications like the IP address of readout hardware, number of channels, etc. The `io_struct.c` file lays out each entry as 
+Specifies how names map to hardware channels on specific devices. The structures defining this map are in `io.h`. Standard types are for reading devices, writing to devices, and recording internal variables.
 
+Data read from devices are stored to a binary frame file. The structure that maps an entry in the frame must specify a `datum_t` structure that describes the field name, data rate, whether it is read/write, and a single-char type string. In an example device, `bbcio_t`, this frame data spec is linked to a card and channel in the readout: 
+```c
+struct bbcio_t {
+  struct datum_t datum;
+  char card;
+  char chan;
+};
+#define END_OF_BBCIO        {DATUM_END_OF_IO, -1, -1}
+```
+The `io.h` file also has specifications like the IP address of readout hardware, number of channels, etc. The `io_struct.c` file defines the mapping of each channel to frame data as
 ```c
 struct bbcio_t bbcio[] = {
   {{"tr0100_ar3_lens_1k",    100, 'r', 'U'}, UT_CARD_DIODE, 0},
@@ -10,18 +20,34 @@ struct bbcio_t bbcio[] = {
 };
 ```
 
+Commanding: The mapping structure for writing variables in `io_struct.c` ties controllable variable names (`ctrl_name`) to field names `field` on the hardware driver.
+
 `frame.c/.h`
 ============
 This provides utilities for assembling a data frame (`build_frame()`), pushing data to it (`map`), and saving the frames (`push_frame_to_disk()`).
 
-`build_frame()`
----------------
+The device channel gets associated with and entry in the frame using the map type: 
+```c
+struct frame_map_t {
+  int start;                    // block of the frame where this channel starts (bytes from 0)
+  int check_start;              // the number of this block in the frame
+  int perframe;                 // number of this type of data per frame
+  int period;                   // factor by which this data date is slower than the fastest
+  int size;                     // size in bytes of each piece of data
+  char field_name[FIELD_LEN];   // name of the data
+};
+```
 
-This assembles the output data frame. Procedure:
+A readout device can have many channels. Each channel is associated with a position in the frame by `map_field()` using an array of `frame_map_t`. This array is allocated for each device by `init_map()`, which initially flags all map entries with `start=-1` to indicate that they are not mapped to a position in the frame file.
+
+To build the frame, go through and map each field in the readouts to a position of the frame. Some entries in the `io_struct` specification are for writing to devices, and are not written to a frame. In this case, they stay in the map, but have `start=-1` to indicate they should be ignored. As the loop goes through live channel to write to the frame, the position is incremented through `frame_len` and `frame_check_len`. The frame starts with a 4-byte header, so is initialized as `frame_len=4` but steps up as the data size times the number of dataum in that channel per frame. The `frame_check_len` starts from zero and counts the total number of data records (of any size) in the frame. `map_field()` takes a pointer to a `frame_map_t` and assigns the data `start` to `frame_length` and the `check_start` start to `frame_check_len`. `PULSE_RATE` is the rate in Hz of the fastest data in the frame. A given channel rate can be specified as a multiple factor (`period`) slower than the fastest rate. For example, if encoders are read at 400 Hz and the period is 4, a given channel will have a perframe of 100, or 100 Hz. In this case, the `io_struct` specifies the perframe and derives the period. The number `perframe` must be a multiple of the `PULSE_RATE`. Finally, `map_field()` copies the data field name to the frame map. Push `frame_len` ahead by the number of data per frame times their size, and push the `frame_check_len` ahead by just the number of datum per frame. Any inactive hardware (commented out of the frame struct) will not be registered as a map.
+
+The control parameters are treated specially.
+
+TODO: rename check_start to start_index?
+TODO: remove the control parameters from the frame
 
 1. Count up the number of control variables that are relays (`num_ctrl_cmd_param()`) and will be put in bit fields.  Find the rate, taken to be the maximum rate requested for any servo (`top_ctrl_cmd_bit_rate`). The on-off bits are written in bitfields of two bytes each. Finally, make a list (`all_ctrl_cmd_period`) of all the rates as `PULSE_RATE` divided by the rate for that bit e.g. the number per data frame.
-2. Allocate the maps using `init_map()`: takes a pointer to a `frame_map_t` it then allocates `num` frame maps which are all set to start at -1 (to later check if the field has not been touched), returning the pointer.
-3. Assemble the data frame. The first 4 bytes are a counter and start-of-frame word. (so `frame_len` = 4). For each data entry in the frame from a given data source, loop through the number of entries using `num_XXX()`, set the `start` to -1, and call `map_field()`. `map_field` takes a pointer to a `frame_map_t` and assigns the data `start` to `frame_length` and the write-check field `check_start` start to `frame_check_len`. The number `perframe` must be a multiple of the `PULSE_RATE`. Also check if the data size is consistent with the `frame_map_t` size. The `period` is set to the ratio of the `PULSE_RATE` to `perframe`. Copy the data field name to the frame. Push to `frame_len` ahead by the number of data per frame times their size, and push the `frame_check_len` ahead by just the number of datum per frame. Only data in the io structs which are read from active hardware are allocated.
 4. Assemble the control parameter section of the frame. Rather than use `map_field`, build this directly in the function: 1) calculate the rate and period, 2) copy the name over, 3) copy over the location to point to fir this piece if data in the frame. For relays this is assumed to be 2 bytes. If it is not an on/off type (a relay) (TODO: what is that, then), assume it has size 4 and put -1 in its `ctrl_cmd_bit_map` entry, which is usually the bit number for a bitfield.
 
 Now the frame is assembled, but the spec for the frame needs to be built from it. `num_internal_spec` is the number of channels in the frame and `frame_len` is the total size in bytes. Create a new`internal_spec` array, where each entry for a channel is a `frame_spec_t`. Procedure:
