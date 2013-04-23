@@ -50,6 +50,7 @@ Summary of other drivers updates:
 * bede streaming to adefile down the mountain (note: slow)
 * hardware: replacement for bors up and running (borsn), Ubuntu 10.04 32-bit, move cards to borsn and plug in cables as before, update HD and OS in old bors, upgrade the link to Canopy
 * National instruments housekeeping readout to 3 USBs->Fiber->USB port in housekeeping computer in the equipment room.
+* Bede `wrecv` was missing `FD_ZERO(&rfds);` and `FD_SET(client_sock, &rfds);` before its select() call. Note that `act_datasrc` and `bede` have different implementations of receive and send functions.
 
 `amcp` installation (on older OSs):
 ====================================

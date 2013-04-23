@@ -10,7 +10,7 @@ struct datum_t {
   char rw;                      // 'r' or 'w'
   //! 'c' = char, 's' = short, 'u' = unsigned short, 'S' = long,
   //! 'S' = unsigned long, 'f' = float, 'd' = double
-  char type;@
+  char type;
 };
 #define DATUM_END_OF_IO     {"", 'x', 'x'}
 
@@ -66,7 +66,7 @@ A given channel in a system may have e.g. 10 records in a frame, and it can writ
 
 `push_frame_to_disk()`
 ----------------------
-The first four bytes are the `START_OF_FRAME` signature and counter. Call `check_frame_field` on all of the bbc and abob channels to count up the number of entries missing. Set the flag for the submit interpreter heartbeat (TODO more). Write 5 frames to a given chunk output file. If the number of frames in the file exceeds `MAX_FRAMES_IN_FILE=(15 * 60)` (15 minutes) then close the flat file and start a new output file.
+The first four bytes are the `START_OF_FRAME` signature and counter. Call `check_frame_field` on all of the bbc and abob channels to count up and report the number of entries missing. Any other systems that could lag should be added to this. Set a flag to indicate whether the submit interpreter hearbeat is active. Write on page of the total `NUM_FRAMES`. If the number of frames in the file exceeds `MAX_FRAMES_IN_FILE=(15 * 60)` (15 minutes) then close the flat file and start a new output file.
 
 `new_frame_file` generates a pointer to a rolling file output of frame files. In the first call, it makes the directory for `DATA_DIR/RAW_DIR/time` and writes the spec file (interal spec, and then derived fields) and the log file (pointed to by `message_add_logfile`. On all calls it opens the field for a chunk of frames and sets a cur file pointing to the current frame data written to disk.
 
